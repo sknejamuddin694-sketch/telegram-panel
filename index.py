@@ -10,7 +10,7 @@ import sqlite3
 from flask import Flask, request, redirect, session, url_for, render_template_string
 import telebot
 
-# ---------------- CONFIG ----------------
+# ================= CONFIG =================
 PORT = int(os.environ.get("PORT", 8080))
 DATA_DIR = "data"
 BOTS_DIR = os.path.join(DATA_DIR, "bots")
@@ -25,62 +25,85 @@ ADMIN_ID = int(os.environ.get("PANEL_ADMIN_ID"))
 if not BOT_TOKEN or not ADMIN_ID:
     raise RuntimeError("PANEL_BOT_TOKEN or PANEL_ADMIN_ID missing")
 
-# ---------------- DATABASE ----------------
+def is_admin(uid):
+    return uid == ADMIN_ID
+
+# ================= DATABASE =================
 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 cur = conn.cursor()
-cur.execute("CREATE TABLE IF NOT EXISTS users (telegram_id INTEGER PRIMARY KEY, password TEXT, verified INTEGER)")
-cur.execute("CREATE TABLE IF NOT EXISTS uploads (telegram_id INTEGER, bot_name TEXT, file_size INTEGER, upload_time TEXT)")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    telegram_id INTEGER PRIMARY KEY,
+    password TEXT,
+    verified INTEGER
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS uploads (
+    telegram_id INTEGER,
+    bot_name TEXT,
+    file_size INTEGER,
+    upload_time TEXT
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS approvals (
+    telegram_id INTEGER PRIMARY KEY
+)
+""")
+
 conn.commit()
 
-# ---------------- TELEGRAM BOT ----------------
+# ================= TELEGRAM BOT =================
 tg = telebot.TeleBot(BOT_TOKEN)
 OTP_CACHE = {}
-APPROVE_CACHE = {}
 RUNNING_BOTS = {}
 
 def send_otp(tg_id):
     otp = str(random.randint(100000, 999999))
     OTP_CACHE[tg_id] = otp
-    try:
-        tg.send_message(
-            tg_id,
-            f"🛡️ KAALIX SECURITY\n\nYour Login OTP: {otp}\n\nDo not share this code."
-        )
-    except Exception as e:
-        print("OTP error:", e)
+    tg.send_message(
+        tg_id,
+        f"OTP CODE: {otp}\nValid for 5 minutes.\nDo not share."
+    )
 
 @tg.message_handler(commands=["start"])
 def tg_start(msg):
-    tg.reply_to(msg, "🚀 KAALIX Panel Bot Online")
+    tg.reply_to(msg, "KAALIX Panel Bot Online")
 
 @tg.message_handler(commands=["approve"])
 def tg_approve(msg):
-    APPROVE_CACHE[msg.from_user.id] = True
-    tg.reply_to(msg, "✅ Access Approved")
+    uid = msg.from_user.id
+    cur.execute("INSERT OR IGNORE INTO approvals VALUES (?)", (uid,))
+    conn.commit()
+    tg.reply_to(msg, "✅ Approved! Now refresh the panel.")
 
 def telegram_polling():
     tg.infinity_polling(skip_pending=True)
 
-# ---------------- FLASK APP ----------------
+# ================= FLASK APP =================
 app = Flask(__name__)
 app.secret_key = "kaalix_secret_key"
 app.permanent_session_lifetime = timedelta(days=7)
 
-# ---------------- UI HTML ----------------
+# ================= UI =================
 BASE_HEAD = """
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body { background:#0f172a; color:white; font-family:sans-serif; }
-.glass { background:rgba(30,41,59,.8); padding:30px; border-radius:20px; }
-input { background:#1e293b; color:white; }
+.glass { background:rgba(30,41,59,.85); padding:30px; border-radius:20px; }
+input, textarea { background:#1e293b; color:white; }
 </style>
 """
 
 LOGIN_HTML = BASE_HEAD + """
 <div class="min-h-screen flex items-center justify-center">
 <div class="glass w-full max-w-md">
-<h2 class="text-3xl font-bold text-center mb-6">KAALIX LOGIN</h2>
+<h2 class="text-3xl font-bold text-center mb-6">LOGIN</h2>
 <form method="post" class="space-y-4">
 <input name="tgid" placeholder="Telegram ID" required class="w-full p-3 rounded">
 <input name="password" type="password" placeholder="Password" required class="w-full p-3 rounded">
@@ -95,7 +118,7 @@ OTP_HTML = BASE_HEAD + """
 <div class="glass w-full max-w-sm text-center">
 <h2 class="text-2xl font-bold mb-4">OTP VERIFY</h2>
 <form method="post">
-<input name="otp" placeholder="6 Digit OTP" required class="w-full p-3 rounded mb-4 text-center">
+<input name="otp" placeholder="Enter OTP" required class="w-full p-3 rounded mb-4 text-center">
 <button class="w-full bg-green-500 text-black p-3 rounded font-bold">VERIFY</button>
 </form>
 </div>
@@ -104,7 +127,7 @@ OTP_HTML = BASE_HEAD + """
 
 DASH_HTML = BASE_HEAD + """
 <div class="max-w-4xl mx-auto p-6">
-<h2 class="text-3xl font-bold mb-6">Dashboard - {{uid}}</h2>
+<h2 class="text-3xl font-bold mb-6">Dashboard ({{uid}})</h2>
 
 {% for bot, status in bots.items() %}
 <div class="glass mb-4 flex justify-between items-center">
@@ -126,43 +149,30 @@ DASH_HTML = BASE_HEAD + """
 </div>
 """
 
-EDIT_HTML = BASE_HEAD + """
-<div class="max-w-5xl mx-auto p-6">
-<h2 class="text-2xl font-bold mb-4">Edit {{botname}}</h2>
-<form method="post">
-<textarea name="code" class="w-full h-[70vh] bg-black text-green-400 p-4 rounded">{{code}}</textarea>
-<button class="w-full bg-cyan-500 text-black p-3 mt-4 rounded">SAVE</button>
-</form>
-</div>
-"""
-
-# ---------------- ROUTES ----------------
+# ================= ROUTES =================
 @app.route("/", methods=["GET","POST"])
 def login():
     if session.get("user"):
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
-        try:
-            tgid = int(request.form["tgid"])
-            password = request.form["password"]
-            hp = hashlib.sha256(password.encode()).hexdigest()
+        tgid = int(request.form["tgid"])
+        password = request.form["password"]
+        hp = hashlib.sha256(password.encode()).hexdigest()
 
-            cur.execute("SELECT password, verified FROM users WHERE telegram_id=?", (tgid,))
-            row = cur.fetchone()
+        cur.execute("SELECT password, verified FROM users WHERE telegram_id=?", (tgid,))
+        row = cur.fetchone()
 
-            if not row:
-                send_otp(tgid)
-                cur.execute("INSERT INTO users VALUES (?,?,0)", (tgid, hp))
-                conn.commit()
-                session["pending"] = tgid
-                return redirect(url_for("otp"))
+        if not row:
+            send_otp(tgid)
+            cur.execute("INSERT INTO users VALUES (?,?,0)", (tgid, hp))
+            conn.commit()
+            session["pending"] = tgid
+            return redirect(url_for("otp"))
 
-            if row[0] == hp and row[1] == 1:
-                session["user"] = tgid
-                return redirect(url_for("dashboard"))
-        except:
-            pass
+        if row[0] == hp and row[1] == 1:
+            session["user"] = tgid
+            return redirect(url_for("dashboard"))
 
     return render_template_string(LOGIN_HTML)
 
@@ -188,7 +198,8 @@ def dashboard():
         return redirect(url_for("login"))
 
     uid = session["user"]
-    if not APPROVE_CACHE.get(uid):
+    cur.execute("SELECT 1 FROM approvals WHERE telegram_id=?", (uid,))
+    if not cur.fetchone():
         return "Go to Telegram and send /approve"
 
     bots = {}
@@ -208,6 +219,16 @@ def upload():
     if not file:
         return "No file"
 
+    file.seek(0,2)
+    size = file.tell()
+    file.seek(0)
+    if size > 1024 * 1024:
+        return "File too large (1MB)"
+
+    files = [f for f in os.listdir(BOTS_DIR) if f.startswith(str(uid)+"_")]
+    if not is_admin(uid) and len(files) >= 10:
+        return "Slot full (Max 10 bots)"
+
     filename = f"{uid}_{file.filename}"
     path = os.path.join(BOTS_DIR, filename)
     file.save(path)
@@ -218,7 +239,7 @@ def upload():
         os.remove(path)
 
     cur.execute("INSERT INTO uploads VALUES (?,?,?,?)",
-                (uid, filename, 0, datetime.now().isoformat()))
+                (uid, filename, size, datetime.now().isoformat()))
     conn.commit()
     return redirect(url_for("dashboard"))
 
@@ -242,7 +263,7 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# ---------------- START ----------------
+# ================= START =================
 if __name__ == "__main__":
     threading.Thread(target=telegram_polling, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT, debug=False)
