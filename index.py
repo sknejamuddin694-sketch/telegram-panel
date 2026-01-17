@@ -1,244 +1,241 @@
-import os, threading, subprocess, time, signal
-from flask import Flask, request, session, redirect, render_template_string, send_file
+import os, subprocess, time
+from flask import Flask, request, session, redirect, render_template_string
 import telebot
+from telebot.types import Update
 
 # ================= CONFIG =================
-BOT_TOKEN = "PASTE_YOUR_PANEL_BOT_TOKEN"
-APPROVE_BOT_LINK = "https://t.me/Mr_rocky_99_bot"
-OWNER_IDS = ["8465446299"]   # owner chat ids (unlimited)
+BOT_TOKEN = "YOUR_PANEL_BOT_TOKEN"
+OWNER_ID = "8465446299"
+BASE_URL = "https://your-app.onrender.com"
+APPROVE_BOT = "https://t.me/Mr_rocky_99_bot"
+
 USER_LIMIT = 3
-
-BASE = "data"
-BOTS = f"{BASE}/bots"
-LOGS = f"{BASE}/logs"
-
-os.makedirs(BOTS, exist_ok=True)
-os.makedirs(LOGS, exist_ok=True)
+DATA="data"; BOTS=f"{DATA}/bots"; LOGS=f"{DATA}/logs"
+os.makedirs(BOTS,exist_ok=True); os.makedirs(LOGS,exist_ok=True)
 
 RUNNING = {}
+APPROVED = set()
 
 app = Flask(__name__)
-app.secret_key = "craka-secure-panel"
+app.secret_key="craka-secure"
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
-# ================= BOT =================
+# ================= TELEGRAM =================
 @bot.message_handler(commands=["start"])
-def start(m):
-    bot.reply_to(m, "Panel connected ✅")
+def tg_start(m):
+    bot.send_message(m.chat.id,"Panel connected ✅\nApprove ke liye /approve")
 
 @bot.message_handler(commands=["approve"])
-def approve(m):
-    session_key = f"approve_{m.chat.id}"
-    open(session_key, "w").close()
-    bot.reply_to(m, "Approved ✅ अब website refresh करो")
+def tg_approve(m):
+    APPROVED.add(str(m.chat.id))
+    bot.send_message(m.chat.id,"✅ Approved! Website refresh karo")
 
-def bot_thread():
-    while True:
-        try:
-            bot.infinity_polling(skip_pending=True)
-        except:
-            time.sleep(5)
+@app.route("/telegram",methods=["POST"])
+def telegram():
+    update = Update.de_json(request.data.decode(), bot)
+    bot.process_new_updates([update])
+    return "OK"
 
-threading.Thread(target=bot_thread, daemon=True).start()
+bot.remove_webhook()
+bot.set_webhook(url=f"{BASE_URL}/telegram")
 
-# ================= UI BASE =================
+# ================= UI =================
 BASE_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-<meta name=viewport content="width=device-width, initial-scale=1">
+<meta name=viewport content="width=device-width,initial-scale=1">
 <title>Python Bot Hosting</title>
 <style>
+*{font-weight:700}
 body{
  margin:0;
- font-family:Arial;
  background:linear-gradient(135deg,#2b1055,#000);
  color:white;
+ font-family:Arial;
  overflow:hidden;
 }
-.snow{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+.snow{
+ position:fixed;inset:0;
+ background:url('https://i.imgur.com/NM8ZC2B.png');
+ opacity:.25;
+ animation:snow 25s linear infinite;
+}
+@keyframes snow{from{background-position:0 0}to{background-position:0 1200px}}
 .card{
- background:rgba(255,255,255,0.08);
- padding:20px;
- border-radius:14px;
- width:300px;
- margin:auto;
- margin-top:15vh;
- box-shadow:0 0 20px rgba(0,0,0,.5);
+ background:rgba(255,255,255,.08);
+ padding:20px;border-radius:14px;
+ width:320px;margin:12vh auto;
 }
-input,button{
- width:100%;
- padding:10px;
- margin:6px 0;
- border-radius:8px;
- border:none;
+input,textarea,button{
+ width:100%;padding:10px;
+ border-radius:8px;border:none;margin:6px 0;
+ font-family:monospace;
 }
-button{background:#8b5cf6;color:white;font-weight:bold}
+textarea{height:260px}
+button{background:#8b5cf6;color:white;font-weight:800}
 .btn-red{background:#ef4444}
 .btn-gray{background:#6b7280}
-a{text-decoration:none}
 .footer{
- position:fixed;
- bottom:10px;
- width:100%;
- text-align:center;
- font-size:13px;
- opacity:.7;
+ position:fixed;bottom:10px;width:100%;
+ text-align:center;font-size:18px;font-weight:900
 }
 </style>
 </head>
 <body>
-
-<canvas class="snow"></canvas>
-
+<div class="snow"></div>
 {{body|safe}}
-
 <div class="footer">
-Developed by 
-<span style="cursor:pointer;text-decoration:underline"
-onclick="window.open('https://t.me/DM_CRAKA_OWNER_BOT','_blank')">
+Developed By 
+<span onclick="window.open('https://t.me/DM_CRAKA_OWNER_BOT','_blank')"
+style="cursor:pointer;text-decoration:underline">
 C̶R̶A̶K̶A̶
 </span>
 </div>
-
-<script>
-const c=document.querySelector('.snow'),x=c.getContext('2d');
-c.width=innerWidth;c.height=innerHeight;
-let s=[];
-for(let i=0;i<80;i++)s.push({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*2+1});
-function draw(){
-x.clearRect(0,0,c.width,c.height);
-x.fillStyle='rgba(255,255,255,.6)';
-s.forEach(f=>{
-x.beginPath();x.arc(f.x,f.y,f.r,0,Math.PI*2);x.fill();
-f.y+=.5;if(f.y>c.height)f.y=0;
-});
-requestAnimationFrame(draw);
-}
-draw();
-</script>
-
 </body>
 </html>
 """
 
-# ================= ROUTES =================
-@app.route("/", methods=["GET","POST"])
+def render(body):
+    return render_template_string(BASE_HTML,body=body)
+
+# ================= LOGIN =================
+@app.route("/",methods=["GET","POST"])
 def login():
     if request.method=="POST":
         uid=request.form["tgid"]
-        pwd=request.form["password"]
-
-        if not os.path.exists(f"approve_{uid}"):
-            session["need"]=True
-            return redirect("/")
-        session["user"]=uid
+        if uid not in APPROVED:
+            return render(f"""
+            <div class=card>
+            <h3>Approval Required</h3>
+            <a href="{APPROVE_BOT}" target=_blank>
+            <button>Approve Now</button></a>
+            </div>
+            """)
+        session["uid"]=uid
         return redirect("/dashboard")
 
-    msg=""
-    if session.pop("need",None):
-        msg="<p style='color:#ffaaaa'>Telegram me /approve bhejo</p>"
-    body=f"""
+    return render("""
     <div class=card>
-    <h3>Sign In</h3>{msg}
+    <h3>Sign In</h3>
     <form method=post>
     <input name=tgid placeholder="Telegram ID">
-    <input type=password name=password placeholder="Password">
+    <input type=password placeholder="Password">
     <button>Sign In</button>
     </form>
     </div>
-    """
-    return render_template_string(BASE_HTML,body=body)
+    """)
 
+# ================= DASHBOARD =================
 @app.route("/dashboard")
-def dash():
-    uid=session.get("user")
+def dashboard():
+    uid=session.get("uid")
     if not uid: return redirect("/")
 
     files=[f for f in os.listdir(BOTS) if f.startswith(uid+"_")]
-    limit=999 if uid in OWNER_IDS else USER_LIMIT
+    limit=999 if uid==OWNER_ID else USER_LIMIT
 
-    popup=""
-    if session.pop("uploaded",None):
-        popup="<script>alert('Code uploaded successfully');</script>"
-
-    body=popup+f"<div class=card><h3>Your Bots ({len(files)}/{limit})</h3>"
+    body=f"<div class=card><h3>Your Bots ({len(files)}/{limit})</h3>"
 
     for i,f in enumerate(files,1):
         run=f in RUNNING
         body+=f"""
-        <hr>
-        <b>{i}. {f}</b><br>
+        <hr><b>{i}. {f}</b><br>
         {'' if run else f'<a href=/start/{f}><button>Start</button></a>'}
         {f'<a href=/stop/{f}><button class=btn-red>Stop</button></a>' if run else ''}
         {f'<a href=/restart/{f}><button>Restart</button></a>' if run else ''}
+        <a href=/edit/{f}><button>Edit</button></a>
         <a href=/logs/{f}><button class=btn-gray>Logs</button></a>
+        <a href=/delete/{f}><button class=btn-red>Delete</button></a>
         """
-    body+="""
+
+    body+=f"""
     <form method=post action=/upload enctype=multipart/form-data>
-    <input type=file name=code>
-    <button>Upload</button>
-    </form>
-
-    <form method=post action=/delete>
-    <input name=num placeholder="Delete code number">
-    <button class=btn-red>Delete</button>
-    </form>
-
+    <input type=file name=code required>
+    <button>Upload</button></form>
     <a href=/logout><button class=btn-gray>Logout</button></a>
     </div>
     """
-    return render_template_string(BASE_HTML,body=body)
+    return render(body)
 
+# ================= UPLOAD =================
 @app.route("/upload",methods=["POST"])
 def upload():
-    uid=session.get("user")
-    if not uid: return redirect("/")
+    uid=session.get("uid")
     files=[f for f in os.listdir(BOTS) if f.startswith(uid+"_")]
-    if uid not in OWNER_IDS and len(files)>=USER_LIMIT:
+    if uid!=OWNER_ID and len(files)>=USER_LIMIT:
         return "Limit reached"
     f=request.files["code"]
     name=f"{uid}_{f.filename}"
     f.save(f"{BOTS}/{name}")
-    session["uploaded"]=True
     return redirect("/dashboard")
 
+# ================= BOT CONTROL =================
 @app.route("/start/<f>")
 def start_bot(f):
-    p=subprocess.Popen(["python",f"{BOTS}/{f}"],
+    RUNNING[f]=subprocess.Popen(
+        ["python",f"{BOTS}/{f}"],
         stdout=open(f"{LOGS}/{f}.log","w"),
-        stderr=subprocess.STDOUT)
-    RUNNING[f]=p
+        stderr=subprocess.STDOUT
+    )
     return redirect("/dashboard")
 
 @app.route("/stop/<f>")
 def stop_bot(f):
-    p=RUNNING.get(f)
-    if p:
-        p.terminate()
+    if f in RUNNING:
+        RUNNING[f].terminate()
         RUNNING.pop(f)
     return redirect("/dashboard")
 
 @app.route("/restart/<f>")
 def restart(f):
-    stop_bot(f); start_bot(f); return redirect("/dashboard")
+    stop_bot(f); start_bot(f)
+    return redirect("/dashboard")
 
+# ================= LOGS =================
 @app.route("/logs/<f>")
 def logs(f):
-    return send_file(f"{LOGS}/{f}.log")
+    data=open(f"{LOGS}/{f}.log","r").read() if os.path.exists(f"{LOGS}/{f}.log") else ""
+    return render(f"""
+    <div class=card>
+    <h3>Logs</h3>
+    <pre>{data}</pre>
+    <a href=/dashboard><button class=btn-gray>Close Logs</button></a>
+    </div>
+    """)
 
-@app.route("/delete",methods=["POST"])
-def delete():
-    uid=session.get("user")
-    n=int(request.form["num"])-1
-    files=[f for f in os.listdir(BOTS) if f.startswith(uid+"_")]
-    if 0<=n<len(files):
-        f=files[n]
-        stop_bot(f)
-        os.remove(f"{BOTS}/{f}")
-        try: os.remove(f"{LOGS}/{f}.log")
-        except: pass
+# ================= EDIT CODE =================
+@app.route("/edit/<f>",methods=["GET","POST"])
+def edit(f):
+    path=f"{BOTS}/{f}"
+    if request.method=="POST":
+        code=request.form["code"]
+        open(path,"w").write(code)
+        if f in RUNNING:
+            stop_bot(f); start_bot(f)
+        return redirect("/dashboard")
+
+    code=open(path,"r",errors="ignore").read()
+    return render(f"""
+    <div class=card>
+    <h3>Edit Code</h3>
+    <form method=post>
+    <textarea name=code>{code}</textarea>
+    <button>Save</button>
+    </form>
+    <a href=/dashboard><button class=btn-gray>Cancel</button></a>
+    </div>
+    """)
+
+# ================= DELETE =================
+@app.route("/delete/<f>")
+def delete(f):
+    stop_bot(f)
+    try: os.remove(f"{BOTS}/{f}")
+    except: pass
+    try: os.remove(f"{LOGS}/{f}.log")
+    except: pass
     return redirect("/dashboard")
 
 @app.route("/logout")
@@ -247,4 +244,4 @@ def logout():
     return redirect("/")
 
 # ================= RUN =================
-app.run(host="0.0.0.0",port=10000)
+app.run("0.0.0.0",10000)
