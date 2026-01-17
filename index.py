@@ -19,12 +19,11 @@ DB_FILE = os.path.join(DATA_DIR, "panel.db")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(BOTS_DIR, exist_ok=True)
 
-# Render ENV variables ONLY (no input)
 BOT_TOKEN = os.environ.get("PANEL_BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("PANEL_ADMIN_ID"))
 
 if not BOT_TOKEN or not ADMIN_ID:
-    raise RuntimeError("Missing PANEL_BOT_TOKEN or PANEL_ADMIN_ID")
+    raise RuntimeError("PANEL_BOT_TOKEN or PANEL_ADMIN_ID missing")
 
 # ---------------- DATABASE ----------------
 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -45,45 +44,99 @@ def send_otp(tg_id):
     try:
         tg.send_message(
             tg_id,
-            f"🛡️ *KAALIX SECURITY*\n\nYour Login OTP: `{otp}`\n\nDo not share this code.",
-            parse_mode="Markdown"
+            f"🛡️ KAALIX SECURITY\n\nYour Login OTP: {otp}\n\nDo not share this code."
         )
     except Exception as e:
-        print("OTP send error:", e)
+        print("OTP error:", e)
 
 @tg.message_handler(commands=["start"])
 def tg_start(msg):
-    tg.reply_to(msg, "🚀 KAALIX Premium Panel Bot is Online.")
+    tg.reply_to(msg, "🚀 KAALIX Panel Bot Online")
 
 @tg.message_handler(commands=["approve"])
 def tg_approve(msg):
     APPROVE_CACHE[msg.from_user.id] = True
-    tg.reply_to(msg, "✅ Access Approved! You can now use the dashboard.")
+    tg.reply_to(msg, "✅ Access Approved")
 
 def telegram_polling():
     tg.infinity_polling(skip_pending=True)
 
 # ---------------- FLASK APP ----------------
 app = Flask(__name__)
-app.secret_key = "kaalix_secret_key_123"
+app.secret_key = "kaalix_secret_key"
 app.permanent_session_lifetime = timedelta(days=7)
 
-# ---- UI (UNCHANGED) ----
-BASE_HEAD = """<meta name="viewport" content="width=device-width, initial-scale=1.0">
+# ---------------- UI HTML ----------------
+BASE_HEAD = """
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
-body { font-family: 'Inter', sans-serif; background: #0f172a; color: #f8fafc; }
-.glass { background: rgba(30,41,59,.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.1); }
+body { background:#0f172a; color:white; font-family:sans-serif; }
+.glass { background:rgba(30,41,59,.8); padding:30px; border-radius:20px; }
+input { background:#1e293b; color:white; }
 </style>
 """
 
-# (LOGIN_HTML, OTP_HTML, DASH_HTML, EDIT_HTML exactly same as your original)
-# 👉 UI code intentionally untouched for safety
-# 👉 For brevity not repeating here, logic below unchanged
+LOGIN_HTML = BASE_HEAD + """
+<div class="min-h-screen flex items-center justify-center">
+<div class="glass w-full max-w-md">
+<h2 class="text-3xl font-bold text-center mb-6">KAALIX LOGIN</h2>
+<form method="post" class="space-y-4">
+<input name="tgid" placeholder="Telegram ID" required class="w-full p-3 rounded">
+<input name="password" type="password" placeholder="Password" required class="w-full p-3 rounded">
+<button class="w-full bg-cyan-500 text-black p-3 rounded font-bold">LOGIN</button>
+</form>
+</div>
+</div>
+"""
+
+OTP_HTML = BASE_HEAD + """
+<div class="min-h-screen flex items-center justify-center">
+<div class="glass w-full max-w-sm text-center">
+<h2 class="text-2xl font-bold mb-4">OTP VERIFY</h2>
+<form method="post">
+<input name="otp" placeholder="6 Digit OTP" required class="w-full p-3 rounded mb-4 text-center">
+<button class="w-full bg-green-500 text-black p-3 rounded font-bold">VERIFY</button>
+</form>
+</div>
+</div>
+"""
+
+DASH_HTML = BASE_HEAD + """
+<div class="max-w-4xl mx-auto p-6">
+<h2 class="text-3xl font-bold mb-6">Dashboard - {{uid}}</h2>
+
+{% for bot, status in bots.items() %}
+<div class="glass mb-4 flex justify-between items-center">
+<span>{{bot}} - {{status}}</span>
+{% if status == 'STOPPED' %}
+<a href="/startbot/{{bot}}" class="bg-green-500 px-4 py-2 rounded text-black">START</a>
+{% else %}
+<a href="/stopbot/{{bot}}" class="bg-red-500 px-4 py-2 rounded">STOP</a>
+{% endif %}
+</div>
+{% endfor %}
+
+<form method="post" action="/upload" enctype="multipart/form-data" class="glass mt-6">
+<input type="file" name="botfile" required>
+<button class="bg-cyan-500 px-4 py-2 rounded text-black">UPLOAD</button>
+</form>
+
+<a href="/logout" class="block mt-6 text-red-400">Logout</a>
+</div>
+"""
+
+EDIT_HTML = BASE_HEAD + """
+<div class="max-w-5xl mx-auto p-6">
+<h2 class="text-2xl font-bold mb-4">Edit {{botname}}</h2>
+<form method="post">
+<textarea name="code" class="w-full h-[70vh] bg-black text-green-400 p-4 rounded">{{code}}</textarea>
+<button class="w-full bg-cyan-500 text-black p-3 mt-4 rounded">SAVE</button>
+</form>
+</div>
+"""
 
 # ---------------- ROUTES ----------------
-
 @app.route("/", methods=["GET","POST"])
 def login():
     if session.get("user"):
@@ -136,7 +189,7 @@ def dashboard():
 
     uid = session["user"]
     if not APPROVE_CACHE.get(uid):
-        return "Approval required. Use /approve in Telegram."
+        return "Go to Telegram and send /approve"
 
     bots = {}
     for f in os.listdir(BOTS_DIR):
@@ -155,12 +208,6 @@ def upload():
     if not file:
         return "No file"
 
-    file.seek(0,2)
-    size = file.tell()
-    file.seek(0)
-    if size > 1024 * 1024:
-        return "File too large"
-
     filename = f"{uid}_{file.filename}"
     path = os.path.join(BOTS_DIR, filename)
     file.save(path)
@@ -171,7 +218,7 @@ def upload():
         os.remove(path)
 
     cur.execute("INSERT INTO uploads VALUES (?,?,?,?)",
-                (uid, filename, size, datetime.now().isoformat()))
+                (uid, filename, 0, datetime.now().isoformat()))
     conn.commit()
     return redirect(url_for("dashboard"))
 
@@ -179,18 +226,14 @@ def upload():
 def startbot(bot):
     path = os.path.join(BOTS_DIR, bot)
     if bot not in RUNNING_BOTS:
-        p = subprocess.Popen([sys.executable, path])
-        RUNNING_BOTS[bot] = p
+        RUNNING_BOTS[bot] = subprocess.Popen([sys.executable, path])
     return redirect(url_for("dashboard"))
 
 @app.route("/stopbot/<bot>")
 def stopbot(bot):
     p = RUNNING_BOTS.get(bot)
     if p:
-        try:
-            p.terminate()
-        except:
-            pass
+        p.terminate()
         RUNNING_BOTS.pop(bot, None)
     return redirect(url_for("dashboard"))
 
