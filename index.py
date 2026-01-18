@@ -4,7 +4,7 @@ import telebot
 from telebot.types import Update
 
 # ============ CONFIG ============
-BOT_TOKEN = "YOUR_PANEL_BOT_TOKEN"
+BOT_TOKEN = "8507388502:AAFN-A33sRl6uqfy--EShYHXtuhisY06Z9k"
 OWNER_ID = "8465446299"   # owner chat id
 APPROVE_BOT = "https://t.me/Mr_rocky_99_bot"
 
