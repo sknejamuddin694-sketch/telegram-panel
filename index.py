@@ -21,7 +21,7 @@ DB_FILE = os.path.join(DATA_DIR, "panel.db")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(BOTS_DIR, exist_ok=True)
 
-BOT_TOKEN = "8440660703:AAHppsz0_NZzbyxU91vHM5W54CD_Xy_G5WA"
+BOT_TOKEN = "8255116372:AAEHKe0tWHh7rtAparZuA82ZsjPt91KTxFU"
 ADMIN_ID = 8465446299
 
 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
