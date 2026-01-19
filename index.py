@@ -34,14 +34,13 @@ conn.commit()
 tg = telebot.TeleBot(BOT_TOKEN)
 
 OTP_CACHE = {}
-APPROVE_CACHE = {}
 RUNNING_BOTS = {}
 PUBLIC_URL = None
 
 
 def send_otp(tg_id):
     otp = str(random.randint(100000, 999999))
-    OTP_CACHE[tg_id] = otp
+    OTP_CACHE[tg_id] = {"otp": otp, "expires": datetime.now() + timedelta(minutes=10)}
     try:
         tg.send_message(
             tg_id,
@@ -78,14 +77,11 @@ def tg_start(msg):
         tg.reply_to(
     msg,
     "🚀 𝑲𝑨𝑨𝑳𝑰𝑿 𝑷𝒓𝒆𝒎𝒊𝒖𝒎 𝑷𝒂𝒏𝒆𝒍 𝑩𝒐𝒕 𝒊𝒔 𝑶𝒏𝒍𝒊𝒏𝒆\n\n"
-    "⏳ 𝑷𝒂𝒏𝒆𝒍 𝒔𝒕𝒂𝒓𝒕𝒊𝒏𝒈, 𝒍𝒊𝒏𝒌 𝒄𝒐𝒎𝒊𝒏𝒈 𝒔𝒐𝒐𝒏..."
+        "👇 𝑪𝒍𝒊𝒄𝒌 𝒃𝒆𝒍𝒐𝒘 𝒕𝒐 𝒐𝒑𝒆𝒏 𝒕𝒉𝒆 𝒑𝒂𝒏𝒆𝒍\n\n"
+        "🔐 𝑭𝒊𝒓𝒔𝒕-𝑻𝒊𝒎𝒆 𝑳𝒐𝒈𝒊𝒏:\n"
+        "• 𝒀𝒐𝒖 𝒎𝒂𝒚 𝒓𝒆𝒄𝒆𝒊𝒗𝒆 𝑶𝑻𝑷 𝒐𝒏 𝒚𝒐𝒖𝒓 𝒇𝒊𝒓𝒔𝒕 𝒍𝒐𝒈𝒊𝒏\n"
+        "⚡ 𝑺𝒆𝒄𝒖𝒓𝒆 • 𝑭𝒂𝒔𝒕 • 𝑷𝒓𝒆𝒎𝒊𝒖𝒎 𝑨𝒄𝒄𝒆𝒔𝒔"
 )
-
-
-@tg.message_handler(commands=["approve"])
-def tg_approve(msg):
-    APPROVE_CACHE[msg.from_user.id] = True
-    tg.reply_to(msg, "✅ 𝑨𝒄𝒄𝒆𝒔𝒔 𝑨𝒑𝒑𝒓𝒐𝒗𝒆𝒅! 𝒀𝒐𝒖 𝒄𝒂𝒏 𝒏𝒐𝒘 𝒖𝒔𝒆 𝒕𝒉𝒆 𝑫𝒂𝒔𝒉𝒃𝒐𝒂𝒓𝒅.")
 
 
 @tg.message_handler(commands=["panel"])
@@ -105,6 +101,7 @@ app.secret_key = "kaalix_secret_key_123"
 app.permanent_session_lifetime = timedelta(days=7)
 
 # ------------------- HTML & CSS -------------------
+
 BASE_HEAD = """
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script>
@@ -326,9 +323,12 @@ LOGIN_HTML = BASE_HEAD + """
                 <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Password</label>
                 <input name="password" type="password" required class="w-full px-6 py-4 rounded-2xl outline-none input focus:neon-glow glass-morph transition-all duration-300">
             </div>
-            <div class="flex items-center">
-                <input type="checkbox" name="remember" id="rem" class="w-5 h-5 rounded border-slate-600 bg-slate-800 focus:ring-cyan-500">
-                <label for="rem" class="ml-3 text-sm text-slate-400 cursor-pointer select-none">Keep me logged in</label>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <input type="checkbox" name="remember" id="rem" class="w-5 h-5 rounded border-slate-600 bg-slate-800 focus:ring-cyan-500">
+                    <label for="rem" class="ml-3 text-sm text-slate-400 cursor-pointer select-none">Keep me logged in</label>
+                </div>
+                <a href="/forgot" class="text-sm text-cyan-400 hover:underline font-bold">Forgot Password?</a>
             </div>
             <button class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black py-5 rounded-2xl transition-all duration-300 btn-neon shadow-2xl relative overflow-hidden">
                 <span>ENTER PANEL</span>
@@ -360,7 +360,43 @@ OTP_HTML = BASE_HEAD + """
     </div>
 </div>
 """
-# ---------------- HTML TEMPLATES (FIXED) -------------------
+
+FORGOT_HTML = BASE_HEAD + """
+<div class="min-h-screen flex items-center justify-center p-6 relative">
+    <div class="glass w-full max-w-md p-12 rounded-3xl fade-in-up text-center">
+        <h3 class="text-3xl font-black text-white mb-6 cyber-title">Forgot Password</h3>
+        <p class="text-slate-400 mb-6 text-sm font-medium">Enter your Telegram ID to receive a reset OTP.</p>
+        <form method="post" class="space-y-6">
+            <input name="tgid" placeholder="Telegram ID" required class="w-full px-6 py-4 rounded-2xl outline-none focus:neon-glow glass-morph">
+            <button class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-900 font-black py-5 rounded-2xl transition-all duration-300 btn-neon shadow-2xl shadow-emerald-500/30">SEND OTP</button>
+        </form>
+        <div class="mt-6">
+            <a href="/" class="text-cyan-400 hover:underline font-bold">Back to Login</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+"""
+
+RESET_HTML = BASE_HEAD + """
+<div class="min-h-screen flex items-center justify-center p-6 relative">
+    <div class="glass w-full max-w-md p-12 rounded-3xl fade-in-up text-center">
+        <h3 class="text-3xl font-black text-white mb-6 cyber-title">Reset Password</h3>
+        <p class="text-slate-400 mb-6 text-sm font-medium">Enter the OTP sent to Telegram and your new password.</p>
+        <form method="post" class="space-y-6">
+            <input name="otp" placeholder="Enter OTP" required class="w-full px-6 py-4 rounded-2xl outline-none focus:neon-glow glass-morph">
+            <input name="new_password" placeholder="New Password" type="password" required class="w-full px-6 py-4 rounded-2xl outline-none focus:neon-glow glass-morph">
+            <button class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-900 font-black py-5 rounded-2xl transition-all duration-300 btn-neon shadow-2xl shadow-emerald-500/30">RESET PASSWORD</button>
+        </form>
+        <div class="mt-6">
+            <a href="/" class="text-cyan-400 hover:underline font-bold">Back to Login</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+"""
 
 DASH_HTML = BASE_HEAD + """
 <div class="max-w-6xl mx-auto p-4 md:p-12 min-h-screen">
@@ -550,7 +586,6 @@ DASH_HTML = BASE_HEAD + """
     </div>
 </div>
 """
-
 EDIT_HTML = BASE_HEAD + """
 <div class="max-w-6xl mx-auto p-6 md:p-12">
     <div class="flex items-center gap-6 mb-12 fade-in-up">
@@ -571,6 +606,7 @@ EDIT_HTML = BASE_HEAD + """
     </form>
 </div>
 """
+
 # ---------------- FLASK ROUTES -------------------
 
 @app.route("/", methods=["GET", "POST"])
@@ -603,25 +639,94 @@ def login():
 
 @app.route("/otp", methods=["GET","POST"])
 def otp():
-    if "pending" not in session: return redirect(url_for("login"))
-    if request.method=="POST":
+    if "pending" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
         code = request.form.get("otp")
         tgid = session["pending"]
-        if OTP_CACHE.get(tgid) == code:
+        otp_data = OTP_CACHE.get(tgid)
+
+        if not otp_data:
+            return "❌ OTP not found!"
+        if datetime.now() > otp_data["expires"]:
+            OTP_CACHE.pop(tgid)
+            return "❌ OTP expired!"
+        if otp_data["otp"] == code:
+            OTP_CACHE.pop(tgid)
             cur.execute("UPDATE users SET verified=1 WHERE telegram_id=?", (tgid,))
             conn.commit()
             session.pop("pending")
             session["user"] = tgid
             return redirect(url_for("dashboard"))
+        else:
+            return "❌ Invalid OTP!"
+
     return render_template_string(OTP_HTML)
+
+
+@app.route("/forgot", methods=["GET","POST"])
+def forgot():
+    if request.method == "POST":
+        try:
+            tgid = int(request.form.get("tgid"))
+            cur.execute("SELECT telegram_id FROM users WHERE telegram_id=?", (tgid,))
+            if cur.fetchone():
+                # Send OTP with expiry
+                otp = str(random.randint(100000, 999999))
+                OTP_CACHE[tgid] = {"otp": otp, "expires": datetime.now() + timedelta(minutes=10)}
+                try:
+                    tg.send_message(
+                        tgid,
+                        f"🛡️ 𝑲𝑨𝑨𝑳𝑰𝑿 𝑺𝑬𝑪𝑼𝑹𝑰𝑻𝒀 — Your Reset OTP: `{otp}` ❗ Don't share this code.",
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    print("OTP send error:", e)
+
+                session["reset_pending"] = tgid
+                return redirect(url_for("reset_password"))
+            else:
+                return "❌ Telegram ID not found!"
+        except:
+            return "❌ Invalid input!"
+    return render_template_string(FORGOT_HTML)
+
+@app.route("/reset_password", methods=["GET","POST"])
+def reset_password():
+    if "reset_pending" not in session:
+        return redirect(url_for("forgot"))
+    tgid = session["reset_pending"]
+    
+    if request.method == "POST":
+        otp = request.form.get("otp")
+        new_pass = request.form.get("new_password")
+        
+        otp_data = OTP_CACHE.get(tgid)
+        if not otp_data:
+            return "❌ OTP not found!"
+        
+        if datetime.now() > otp_data["expires"]:
+            OTP_CACHE.pop(tgid)
+            return "❌ OTP expired!"
+        
+        if otp_data["otp"] == otp:
+            OTP_CACHE.pop(tgid)  # OTP use hone ke baad delete kar do
+            hp = hashlib.sha256(new_pass.encode()).hexdigest()
+            cur.execute("UPDATE users SET password=? WHERE telegram_id=?", (hp, tgid))
+            conn.commit()
+            session.pop("reset_pending")
+            return "✅ Password reset successfully! Go back to login."
+        else:
+            return "❌ Invalid OTP!"
+    
+    return render_template_string(RESET_HTML)
 
 @app.route("/dashboard")
 def dashboard():
     if "user" not in session: return redirect(url_for("login"))
     uid = session["user"]
-    if not APPROVE_CACHE.get(uid):
-        return f"{BASE_HEAD}<div class='min-h-screen flex items-center justify-center p-6'><div class='glass p-10 rounded-3xl text-center'><h2 class='text-2xl font-bold mb-4 text-amber-400'>Approval Required</h2><p class='text-slate-400 mb-6'>Please go to your Telegram bot and type <b>/approve</b></p><a href='#' onclick='window.location.reload()' class='text-cyan-400 font-bold underline'>Already Approved? Refresh here</a></div></div>"
-    
+
     user_bots = {}
     files = [f for f in os.listdir(BOTS_DIR) if f.startswith(str(uid)+"_")]
     for f in files:
@@ -716,14 +821,9 @@ if __name__ == "__main__":
 
                 # AUTO SEND LINK TO ADMIN WITH BUTTON
                 try:
-                    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-                    # Create inline button
                     keyboard = InlineKeyboardMarkup()
                     button = InlineKeyboardButton(text="🌐 Open KAALIX Panel", url=PUBLIC_URL)
                     keyboard.add(button)
-
-                    # Send message with button
                     tg.send_message(
                         ADMIN_ID,
                         "🚀 *KAALIX PANEL LIVE*",
