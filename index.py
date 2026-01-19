@@ -352,7 +352,7 @@ OTP_HTML = BASE_HEAD + """
         </form>
         
         <div class="mt-8 pt-8 border-t border-slate-700">
-            <a href="https://t.me/YOUR_BOT_USERNAME" target="_blank" 
+            <a href="https://t.me/Kaalix_gang_bot" target="_blank" 
                class="inline-block w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-4 rounded-2xl transition-all duration-300 btn-neon shadow-2xl">
                🔑 Request OTP on Telegram BOT
             </a>
