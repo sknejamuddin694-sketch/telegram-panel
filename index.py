@@ -405,7 +405,7 @@ DASH_HTML = BASE_HEAD + """
 
         <div class="bg-gradient-to-br from-emerald-500/10 to-transparent backdrop-blur-xl p-8 rounded-[2.5rem] border border-emerald-500/20">
             <p class="text-emerald-500/70 text-xs font-black uppercase tracking-widest">Server Latency</p>
-            <h4 class="text-5xl font-black text-emerald-400 mt-3">ONLINE<span class="text-xl">📟</span></h4>
+            <h4 class="text-5xl font-black text-emerald-400 mt-3">ONLINE<span class="text-xl"></span></h4>
             <p class="text-emerald-500/50 text-[10px] mt-2 font-bold uppercase">Optimal Performance</p>
         </div>
     </div>
